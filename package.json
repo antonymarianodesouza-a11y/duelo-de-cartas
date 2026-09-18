@@ -1,0 +1,12 @@
+{
+  "name": "duelo-cartas-servidor",
+  "version": "1.0.0",
+  "description": "Servidor de sala (relay) para o protótipo de Duelo de Cartas",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
