@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Duelo de Cartas — Protótipo</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap');
+
+:root{
+  --stone-950:#0e0c0a; --stone-900:#171310; --stone-800:#241e18; --stone-700:#382d23; --stone-600:#5a483a;
+  --parchment:#e8dcc4; --parchment-dim:#b8a988;
+  --ember:#c8632c; --ember-bright:#e88c4d;
+  --blood:#8f2c2c; --blood-bright:#c94141;
+  --poison:#5a8f3c; --gold:#c9a84c; --blue:#4d8ec9;
+  --shadow-deep: 0 8px 24px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box;}
+html,body{ margin:0; padding:0; background: radial-gradient(ellipse at 50% -10%, #2a1f16 0%, var(--stone-950) 60%); color:var(--parchment); font-family:'Crimson Pro', serif; min-height:100vh; }
+.wrap{ max-width:900px; margin:0 auto; padding:20px 16px 60px; }
+h1{ font-family:'Cinzel', serif; font-weight:900; text-align:center; font-size:clamp(22px,4vw,34px); letter-spacing:.03em; margin:8px 0 4px; text-shadow: 0 2px 0 #000, 0 0 30px rgba(200,99,44,.25); }
+.subtitle{ text-align:center; color:var(--parchment-dim); font-style:italic; margin:0 0 24px; font-size:15px; }
+
+#setup{ display:flex; flex-direction:column; align-items:center; gap:18px; }
+.pick-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; width:100%; }
+.pick-card{ background:linear-gradient(180deg,var(--stone-800),var(--stone-900)); border:1px solid var(--stone-600); padding:10px 10px 12px; cursor:pointer; position:relative; transition:transform .15s ease, border-color .15s ease; clip-path:polygon(6px 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%,0 6px); }
+.pick-card:hover{transform:translateY(-3px);border-color:var(--ember);}
+.pick-card.selected{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold), var(--shadow-deep);}
+.pick-card .mini-art{ width:100%; height:64px; margin-bottom:6px; }
+.pick-card .name{ font-family:'Cinzel',serif; font-weight:700; font-size:14px; color:var(--ember-bright); margin-bottom:6px; }
+.pick-card .stats{font-size:12.5px;color:var(--parchment-dim);line-height:1.6;}
+.pick-card .stats b{color:var(--parchment);}
+.pick-card .role{font-size:11.5px;color:var(--gold);margin-top:6px;font-style:italic;}
+#supportHint{ font-size:13px; color:var(--parchment-dim); text-align:center; min-height:18px; }
+
+#handCount{color:var(--gold);font-style:italic;}
+.pick-card.hand-full{opacity:.4;cursor:not-allowed;}
+.role-buttons{ display:flex; gap:4px; margin-top:8px; }
+.role-btn{ flex:1; font-size:10px; font-family:'Cinzel',serif; padding:5px 2px; background:var(--stone-900); border:1px solid var(--stone-600); color:var(--parchment-dim); cursor:pointer; }
+.role-btn.active-battle{background:var(--blood);border-color:var(--blood-bright);color:var(--parchment);}
+.role-btn.active-support{background:#2c5a8f;border-color:var(--blue);color:var(--parchment);}
+.role-btn.active-discard{background:#4a4030;border-color:var(--gold);color:var(--parchment);}
+.card-back{ background:linear-gradient(135deg,var(--stone-700),var(--stone-900)); border:1px solid var(--gold); height:100px; display:flex; align-items:center; justify-content:center; font-family:'Cinzel',serif; font-size:28px; color:var(--gold); clip-path:polygon(6px 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%,0 6px); transition:opacity .3s ease; }
+.card-back.revealed{ font-size:12px; }
+
+.btn{ font-family:'Cinzel',serif; font-weight:600; letter-spacing:.04em; background:linear-gradient(180deg,var(--ember-bright),var(--ember)); color:#1a0f08; border:none; padding:12px 30px; font-size:15px; cursor:pointer; clip-path:polygon(8px 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%,0 8px); box-shadow:var(--shadow-deep); transition:filter .15s ease, transform .1s ease; }
+.btn:hover{filter:brightness(1.1);}
+.btn:active{transform:translateY(1px);}
+.btn:disabled{opacity:.35;cursor:not-allowed;filter:none;}
+.btn.secondary{ background:linear-gradient(180deg,var(--stone-700),var(--stone-800)); color:var(--parchment); border:1px solid var(--stone-600); }
+
+#battle{display:none;}
+.stage{ position:relative; background: linear-gradient(180deg, rgba(200,99,44,.06), transparent 40%), linear-gradient(180deg,var(--stone-900),var(--stone-950)); border:1px solid var(--stone-700); height:220px; margin-bottom:10px; overflow:hidden; }
+.stage::after{ content:''; position:absolute; left:0; right:0; bottom:0; height:36px; background:linear-gradient(180deg, transparent, rgba(0,0,0,.5)); }
+.combatant{ position:absolute; bottom:14px; width:120px; height:160px; transition:transform .35s cubic-bezier(.4,0,.2,1); }
+.combatant.you{ left:14%; transform:translateX(-50%); }
+.combatant.foe{ right:14%; transform:translateX(50%) scaleX(-1); }
+.combatant svg{ width:100%; height:100%; filter:drop-shadow(0 8px 10px rgba(0,0,0,.6)); }
+.combatant.lunge-you{ transform:translateX(-50%) translateX(70px); }
+.combatant.lunge-foe{ transform:translateX(50%) scaleX(-1) translateX(70px); }
+.combatant .hit-flash{ position:absolute; inset:0; background:var(--blood-bright); mix-blend-mode:screen; opacity:0; pointer-events:none; }
+.combatant.hit .hit-flash{ animation:flash .4s ease-out; }
+@keyframes flash{ 0%{opacity:.85;} 100%{opacity:0;} }
+.combatant.shake{ animation:shake .4s ease; }
+@keyframes shake{ 0%{transform:translate(0,0);} 20%{transform:translate(-6px,0);} 40%{transform:translate(6px,0);} 60%{transform:translate(-4px,0);} 80%{transform:translate(4px,0);} 100%{transform:translate(0,0);} }
+.combatant.poisoned::before{ content:''; position:absolute; inset:-6px; border-radius:50%; box-shadow:0 0 22px 6px rgba(90,143,60,.55); animation:pulse 1.4s infinite; }
+.combatant.shielded::before{ content:''; position:absolute; inset:-6px; border-radius:50%; box-shadow:0 0 22px 6px rgba(77,142,201,.55); animation:pulse 1.2s infinite; }
+.combatant.healing::before{ content:''; position:absolute; inset:-6px; border-radius:50%; box-shadow:0 0 26px 8px rgba(120,200,120,.7); animation:pulse 1s ease-out; }
+.combatant.dodging{ opacity:.3; }
+.combatant.blocking{ filter:brightness(1.3) drop-shadow(0 0 10px rgba(77,142,201,.6)); }
+@keyframes pulse{ 0%,100%{opacity:.5;} 50%{opacity:1;} }
+.floating-text{ position:absolute; font-family:'Cinzel',serif; font-weight:700; font-size:18px; color:var(--blood-bright); text-shadow:0 2px 4px rgba(0,0,0,.8); animation:floatUp 1s ease-out forwards; pointer-events:none; white-space:nowrap; }
+.floating-text.heal{color:#7fd67f;}
+.floating-text.info{color:var(--gold); font-size:13.5px; font-style:italic;}
+@keyframes floatUp{ 0%{ transform:translateY(0); opacity:1; } 100%{ transform:translateY(-46px); opacity:0; } }
+
+.info-row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:10px; }
+.fighter-info.enemy{ text-align:right; }
+.fighter-info .name{ font-family:'Cinzel',serif; font-weight:700; font-size:15px; color:var(--ember-bright); }
+.fighter-info .support-name{ font-size:11px; color:var(--gold); font-style:italic; margin-bottom:6px; }
+.bar-label{ display:flex; justify-content:space-between; font-size:11px; color:var(--parchment-dim); margin-bottom:2px; }
+.fighter-info.enemy .bar-label{flex-direction:row-reverse;}
+.bar-track{ height:11px; background:var(--stone-950); border:1px solid var(--stone-700); overflow:hidden; margin-bottom:6px; }
+.bar-fill{height:100%;transition:width .3s ease;}
+.bar-fill.hp{background:linear-gradient(90deg,var(--blood),var(--blood-bright));}
+.fighter-info.enemy .bar-fill{margin-left:auto;}
+.status-row{ display:flex; gap:6px; flex-wrap:wrap; min-height:20px; }
+.fighter-info.enemy .status-row{justify-content:flex-end;}
+.status-pill{ font-size:10.5px; padding:2px 7px; border:1px solid var(--stone-600); background:var(--stone-950); color:var(--parchment-dim); }
+.status-pill.poison{color:var(--poison);border-color:var(--poison);}
+.status-pill.shield{color:var(--blue);border-color:var(--blue);}
+.status-pill.buff{color:var(--gold);border-color:var(--gold);}
+
+/* Round timer */
+#roundBox{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+#roundLabel{ font-family:'Cinzel',serif; font-size:12.5px; color:var(--parchment-dim); letter-spacing:.03em; }
+#timerTrack{ flex:1; height:8px; margin-left:10px; background:var(--stone-950); border:1px solid var(--stone-700); overflow:hidden; }
+#timerFill{ height:100%; width:100%; background:linear-gradient(90deg,var(--gold),var(--ember-bright)); transform-origin:left; }
+
+#log{ background:var(--stone-950); border:1px solid var(--stone-700); height:100px; overflow-y:auto; padding:10px 12px; font-size:13px; line-height:1.6; margin-bottom:14px; }
+#log p{margin:0 0 4px;color:var(--parchment-dim);}
+#log p.you{color:var(--ember-bright);}
+#log p.foe{color:#c94141;}
+#log p.sys{color:var(--gold);font-style:italic;}
+
+#actions{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.action-btn{ font-family:'Cinzel',serif; font-size:13.5px; font-weight:600; letter-spacing:.02em; padding:14px 8px 10px; background:linear-gradient(180deg,var(--stone-700),var(--stone-800)); border:1px solid var(--stone-600); color:var(--parchment); cursor:pointer; position:relative; overflow:hidden; clip-path:polygon(6px 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%,0 6px); }
+.action-btn small{ display:block; font-family:'Crimson Pro',serif; font-weight:400; font-style:italic; color:var(--parchment-dim); font-size:11px; margin-top:3px; }
+.action-btn:disabled{opacity:.32;cursor:not-allowed;}
+.action-btn.chosen{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);}
+.action-btn.attack:not(:disabled):hover{border-color:var(--blood-bright);}
+.action-btn.defend:not(:disabled):hover{border-color:var(--blue);}
+.action-btn.dodge:not(:disabled):hover{border-color:#7fd67f;}
+.action-btn.support:not(:disabled):hover{border-color:var(--gold);}
+
+#endScreen{ display:none; text-align:center; padding:30px 10px; }
+#endScreen h2{ font-family:'Cinzel',serif; font-size:26px; margin-bottom:8px; }
+#endScreen p{color:var(--parchment-dim);margin-bottom:20px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Duelo de Cartas</h1>
+  <p class="subtitle">Protótipo de combate — escolha sua carta de batalha e sua carta de suporte</p>
+
+  <div id="modeSelect">
+    <p class="subtitle" style="margin-bottom:14px;">Como você quer jogar?</p>
+    <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
+      <button class="btn" id="modeBotBtn">Jogar contra o bot</button>
+      <button class="btn secondary" id="modeOnlineBtn">Jogar online com um amigo</button>
+    </div>
+  </div>
+
+  <div id="onlineSetup" style="display:none;">
+    <p class="subtitle" style="margin-bottom:8px;">Endereço do servidor (os dois usam o mesmo)</p>
+    <input id="serverUrlInput" type="text" placeholder="wss://seu-servidor.glitch.me" style="width:100%;font-size:13px;background:var(--stone-950);color:var(--parchment);border:1px solid var(--stone-700);padding:10px;margin-bottom:12px;">
+    <p class="subtitle" style="margin-bottom:8px;">Código da sala (combine com seu amigo — qualquer palavra, os dois digitam a mesma)</p>
+    <input id="roomCodeInput" type="text" placeholder="ex: espada123" style="width:100%;font-size:13px;background:var(--stone-950);color:var(--parchment);border:1px solid var(--stone-700);padding:10px;margin-bottom:14px;">
+    <button class="btn" id="joinRoomBtn">Entrar na sala</button>
+    <p id="roomStatus" class="subtitle" style="margin-top:10px;"></p>
+  </div>
+
+  <div id="handPhase" style="display:none;">
+    <p id="roundLabelTitle" class="subtitle" style="margin-bottom:2px;color:var(--gold);"></p>
+    <p id="handSummary" class="subtitle" style="margin-bottom:8px;"></p>
+    <p class="subtitle" style="margin-bottom:8px;">Sua mão — escolha as cartas <span id="handCount">(0/3)</span></p>
+    <div class="pick-row" id="handRow"></div>
+    <button class="btn secondary" id="randomHandBtn" style="margin-bottom:10px;">🎲 Escolha aleatória</button>
+    <button class="btn" id="toRolesBtn" disabled>Confirmar escolha</button>
+  </div>
+
+  <div id="rolePhase" style="display:none;">
+    <p class="subtitle" style="margin-bottom:8px;">2. Defina o papel de cada carta</p>
+    <div class="pick-row" id="roleRow"></div>
+    <p id="roleHint" class="subtitle" style="margin-top:2px;">Toque numa carta e escolha o papel dela</p>
+    <button class="btn secondary" id="randomRolesBtn" style="margin-top:6px;">🎲 Sortear papéis</button>
+    <button class="btn" id="toConfrontBtn" style="display:none;" disabled>Confirmar papéis</button>
+  </div>
+
+  <div id="confrontPhase" style="display:none;">
+    <p class="subtitle" style="margin-bottom:10px;">3. Cartas de descarte — reveladas para os dois</p>
+    <div class="info-row" style="margin-bottom:22px;">
+      <div>
+        <p class="subtitle" style="margin:0 0 6px;">Seu descarte</p>
+        <div class="pick-row" id="yourDiscardBox" style="grid-template-columns:1fr;"></div>
+      </div>
+      <div>
+        <p class="subtitle" style="margin:0 0 6px;">Descarte do inimigo</p>
+        <div class="pick-row" id="foeDiscardBox" style="grid-template-columns:1fr;"></div>
+      </div>
+    </div>
+    <p class="subtitle" style="margin:0 0 10px;">Batalha e suporte — ocultos até o confronto</p>
+    <div class="info-row">
+      <div>
+        <p class="subtitle" style="margin:0 0 6px;">Você</p>
+        <div class="pick-row" id="yourHiddenBox" style="grid-template-columns:1fr 1fr;"></div>
+      </div>
+      <div>
+        <p class="subtitle" style="margin:0 0 6px;">Inimigo</p>
+        <div class="pick-row" id="foeHiddenBox" style="grid-template-columns:1fr 1fr;"></div>
+      </div>
+    </div>
+    <button class="btn" id="revealBtn" style="margin-top:18px;">Revelar e batalhar</button>
+  </div>
+
+  <div id="battle">
+    <div class="stage" id="stage">
+      <div class="combatant you" id="youArt"><div class="hit-flash"></div></div>
+      <div class="combatant foe" id="foeArt"><div class="hit-flash"></div></div>
+    </div>
+
+    <div class="info-row">
+      <div class="fighter-info you">
+        <div class="name" id="youName"></div>
+        <div class="support-name" id="youSupportName"></div>
+        <div class="bar-label"><span>Vida</span><span id="youHpText"></span></div>
+        <div class="bar-track"><div class="bar-fill hp" id="youHpBar"></div></div>
+        <div class="status-row" id="youStatus"></div>
+      </div>
+      <div class="fighter-info enemy">
+        <div class="name" id="foeName"></div>
+        <div class="support-name" id="foeSupportName"></div>
+        <div class="bar-label"><span id="foeHpText"></span><span>Vida</span></div>
+        <div class="bar-track"><div class="bar-fill hp" id="foeHpBar"></div></div>
+        <div class="status-row" id="foeStatus"></div>
+      </div>
+    </div>
+
+    <div id="roundBox">
+      <span id="roundLabel">Escolha sua ação</span>
+      <div id="timerTrack"><div id="timerFill"></div></div>
+    </div>
+
+    <div id="log"></div>
+
+    <div id="actions">
+      <button class="action-btn attack" id="btnAttack">Atacar<small id="atkDesc"></small></button>
+      <button class="action-btn defend" id="btnDefend">Defender<small>Reduz o dano recebido</small></button>
+      <button class="action-btn dodge" id="btnDodge">Esquivar<small id="dodgeDesc"></small></button>
+      <button class="action-btn support" id="btnSupport">Habilidade<small id="supDesc"></small></button>
+    </div>
+  </div>
+
+  <div id="endScreen">
+    <h2 id="endTitle"></h2>
+    <p id="endText"></p>
+    <button class="btn secondary" id="restartBtn">Jogar novamente</button>
+  </div>
+</div>
+
+<script>
+/* ---------- SVG art per character (placeholder — trocar pela arte final depois) ---------- */
+function svgFor(key){
+  const palettes = {
+    cavaleiro:{main:'#7d8a99', accent:'#c9a84c', dark:'#3a4048'},
+    rei:      {main:'#8a6a2e', accent:'#e8dcc4', dark:'#4a3616'},
+    rainha:   {main:'#6b3f6b', accent:'#e8dcc4', dark:'#3a1f3a'},
+    assassino:{main:'#3a3a3a', accent:'#5a8f3c', dark:'#1a1a1a'},
+    arqueiro: {main:'#4c6b3a', accent:'#c8632c', dark:'#2a3a1e'},
+    sacerdote:{main:'#c4b898', accent:'#c9a84c', dark:'#6b6048'}
+  };
+  const p = palettes[key];
+  const bodies = {
+    cavaleiro:`<path class="body" d="M50 40 L70 55 L68 100 Q68 130 50 145 Q32 130 32 100 L30 55 Z" fill="${p.main}"/><rect x="38" y="20" width="24" height="26" rx="4" fill="${p.dark}"/><rect x="42" y="18" width="16" height="6" fill="${p.accent}"/><rect x="20" y="60" width="10" height="55" rx="3" fill="${p.dark}"/><path d="M15 55 L35 55 L30 130 L20 130 Z" fill="${p.accent}" opacity=".85"/><rect x="68" y="55" width="9" height="60" rx="3" fill="${p.dark}"/>`,
+    rei:`<path class="body" d="M50 42 L68 58 L64 100 Q64 128 50 142 Q36 128 36 100 L32 58 Z" fill="${p.main}"/><path d="M36 18 L42 30 L50 16 L58 30 L64 18 L60 36 L40 36 Z" fill="${p.accent}"/><circle cx="50" cy="30" r="12" fill="${p.dark}"/><rect x="66" y="60" width="8" height="55" rx="3" fill="${p.accent}"/>`,
+    rainha:`<path class="body" d="M50 40 Q75 60 70 130 Q50 145 30 130 Q25 60 50 40 Z" fill="${p.main}"/><circle cx="50" cy="26" r="13" fill="${p.dark}"/><path d="M38 16 L44 24 L50 14 L56 24 L62 16 L58 30 L42 30 Z" fill="${p.accent}"/><rect x="70" y="55" width="6" height="65" rx="3" fill="${p.accent}"/><circle cx="73" cy="52" r="6" fill="${p.accent}"/>`,
+    assassino:`<path class="body" d="M50 44 Q66 56 62 100 Q60 130 50 142 Q40 130 38 100 Q34 56 50 44 Z" fill="${p.main}"/><path d="M32 30 Q50 12 68 30 Q64 46 50 48 Q36 46 32 30 Z" fill="${p.dark}"/><path d="M14 70 L34 78 L30 86 L12 80 Z" fill="${p.accent}"/><path d="M86 70 L66 78 L70 86 L88 80 Z" fill="${p.accent}"/>`,
+    arqueiro:`<path class="body" d="M50 42 L66 56 L62 100 Q62 128 50 142 Q38 128 38 100 L34 56 Z" fill="${p.main}"/><rect x="40" y="20" width="20" height="22" rx="3" fill="${p.dark}"/><path d="M74 40 Q90 70 74 110" stroke="${p.accent}" stroke-width="4" fill="none"/><line x1="74" y1="40" x2="74" y2="110" stroke="${p.accent}" stroke-width="1.5"/>`,
+    sacerdote:`<path class="body" d="M50 40 Q78 58 72 130 Q50 148 28 130 Q22 58 50 40 Z" fill="${p.main}"/><circle cx="50" cy="22" r="16" fill="none" stroke="${p.accent}" stroke-width="3"/><circle cx="50" cy="30" r="10" fill="${p.dark}"/><rect x="47" y="55" width="6" height="60" rx="3" fill="${p.accent}"/><circle cx="50" cy="52" r="7" fill="${p.accent}"/>`
+  };
+  return `<svg viewBox="0 0 100 150" xmlns="http://www.w3.org/2000/svg">${bodies[key]}</svg>`;
+}
+
+const CHARACTERS = {
+  cavaleiro: { name:'Cavaleiro', hp:120, dmg:15, role:'Tanque — resiste e desgasta',
+    attackName:'Investida', supportName:'Escudo', supportDesc:'Reduz pela metade o próximo dano recebido',
+    supportEffect:(s)=>{ s.shieldTurns=1; } },
+  rei: { name:'Rei', hp:100, dmg:18, role:'Equilibrado — comanda a luta',
+    attackName:'Golpe Real', supportName:'Comando', supportDesc:'+40% de dano no próximo ataque',
+    supportEffect:(s)=>{ s.buffAtk=1.4; } },
+  rainha: { name:'Rainha', hp:90, dmg:12, role:'Suporte — sustenta a vida',
+    attackName:'Lâmina Élfica', supportName:'Cura Real', supportDesc:'Recupera 18 de vida',
+    supportEffect:(s)=>{ s.hp=Math.min(s.maxHp,s.hp+18); s._healed=true; } },
+  assassino: { name:'Assassino', hp:70, dmg:20, role:'Burst — dano alto, vida frágil',
+    attackName:'Facada Envenenada', supportName:'Fumaça', supportDesc:'Esquiva automática e gratuita no próximo ataque recebido (não gasta a ação de Esquivar)',
+    supportEffect:(s)=>{ s.fumacaBonus=true; }, poisonOnHit:true },
+  arqueiro: { name:'Arqueiro', hp:85, dmg:17, role:'Precisão — ignora parte da defesa',
+    attackName:'Flecha Certeira', supportName:'Mira', supportDesc:'50% de chance de crítico (x1.8) no próximo ataque',
+    supportEffect:(s)=>{ s.critChance=0.5; } },
+  sacerdote: { name:'Sacerdote', hp:95, dmg:10, role:'Curandeiro — remove venenos',
+    attackName:'Golpe da Fé', supportName:'Bênção', supportDesc:'Recupera 14 de vida e remove veneno',
+    supportEffect:(s)=>{ s.hp=Math.min(s.maxHp,s.hp+14); s.poison=null; s._healed=true; } }
+};
+
+const ROUND_SECONDS = 5;
+const ABILITY_COOLDOWN_CHOICES = 2;
+const DODGE_SUCCESS_CHANCE = 1.0;
+const DODGE_COOLDOWN_CHOICES = 2;
+
+let youKey=null, supKey=null, you=null, foe=null, logEl;
+let playerChoice=null, botChoice=null, timerInterval=null, roundActive=false;
+
+const HAND_SIZE = 10;
+let yourHand=[], yourSelectedIdx=[], yourRoles={battle:null,support:null,discard:null};
+let botHand=[], botRoles={battle:null,support:null,discard:null};
+let matchRound=1;
+let roundSnapshot=null; // {yourRoles, botRoles} captured right before a battle starts
+let battleEnded=false; // guards against endBattle firing twice for the same battle
+
+// --- Online (WebRTC) mode state ---
+let onlineMode=false;
+let pc=null, dc=null;
+let peerHandSize=null;
+let myReadySent=false, peerReady=false, myRevealSent=false;
+let peerDiscardKey=undefined, peerBattleKey=null, peerSupportKey=null;
+let onlineBattleStarted=false;
+let myCritRoll=null, peerCritRoll=null;
+
+function drawHand(){
+  const keys=Object.keys(CHARACTERS);
+  const hand=[];
+  for(let i=0;i<HAND_SIZE;i++) hand.push(keys[Math.floor(Math.random()*keys.length)]);
+  return hand;
+}
+
+function miniCard(key, extraClass){
+  const c=CHARACTERS[key];
+  return `<div class="mini-art">${svgFor(key)}</div><div class="name">${c.name}</div><div class="stats">Vida <b>${c.hp}</b><br>Dano <b>${c.dmg}</b></div><div class="role">${c.supportName}: ${c.supportDesc}</div>`;
+}
+
+// --- Online connection via a small relay server (room code based) ---
+function sendMsg(obj){ if(dc && dc.readyState===WebSocket.OPEN) dc.send(JSON.stringify(obj)); }
+
+function joinRoom(){
+  const serverUrl=document.getElementById('serverUrlInput').value.trim();
+  const roomCode=document.getElementById('roomCodeInput').value.trim();
+  const statusEl=document.getElementById('roomStatus');
+  if(!serverUrl || !roomCode){ statusEl.textContent='Preenche o endereço do servidor e o código da sala.'; return; }
+
+  statusEl.textContent='Conectando ao servidor…';
+  let ws;
+  try{ ws=new WebSocket(serverUrl); }
+  catch(err){ statusEl.textContent='Endereço de servidor inválido.'; return; }
+
+  ws.onopen=()=>{
+    statusEl.textContent='Entrando na sala…';
+    ws.send(JSON.stringify({type:'join', room:roomCode}));
+  };
+  ws.onerror=()=>{ statusEl.textContent='Não consegui conectar nesse servidor. Confira o endereço.'; };
+  ws.onclose=()=>{ if(!onlineMode) statusEl.textContent='Conexão encerrada antes de começar.'; };
+  ws.onmessage=(e)=>{
+    const msg=JSON.parse(e.data);
+    if(msg.type==='joined'){
+      statusEl.textContent = msg.players===2 ? 'Sala completa! Iniciando…' : 'Aguardando seu amigo entrar na sala…';
+    } else if(msg.type==='room-full'){
+      statusEl.textContent='Essa sala já tem dois jogadores. Combine outro código com seu amigo.';
+    } else if(msg.type==='ready'){
+      dc=ws;
+      onlineMode=true;
+      document.getElementById('onlineSetup').style.display='none';
+      initMatch();
+    } else {
+      handlePeerMessage(msg);
+    }
+  };
+}
+
+function handlePeerMessage(msg){
+  if(msg.type==='battle-ready'){
+    peerDiscardKey = msg.discardKey;
+    peerReady=true;
+    const box=document.getElementById('foeDiscardBox');
+    if(box){
+      box.innerHTML = peerDiscardKey
+        ? `<div class="pick-card">${miniCard(peerDiscardKey)}</div>`
+        : `<div class="pick-card" style="opacity:.5;text-align:center;padding-top:20px;">— sem descarte —</div>`;
+    }
+    maybeSendReveal();
+  } else if(msg.type==='reveal'){
+    peerBattleKey=msg.battleKey; peerSupportKey=msg.supportKey;
+    checkStartOnlineBattle();
+  } else if(msg.type==='action'){
+    if(msg.round===matchRound){
+      botChoice=msg.action;
+      peerCritRoll = (msg.critRoll!==undefined) ? msg.critRoll : null;
+      tryResolveOnline();
+    }
+  } else if(msg.type==='handsize'){
+    peerHandSize=msg.n;
+    const el=document.getElementById('handSummary');
+    if(el && document.getElementById('handPhase').style.display!=='none'){
+      el.textContent=`Sua mão: ${yourHand.length} carta(s) · Mão do amigo: ${peerHandSize} carta(s)`;
+    }
+  }
+}
+
+function maybeSendReveal(){
+  if(onlineMode && myReadySent && peerReady && !myRevealSent){
+    myRevealSent=true;
+    sendMsg({type:'reveal', battleKey:youKey, supportKey:supKey});
+    checkStartOnlineBattle();
+  }
+}
+
+function checkStartOnlineBattle(){
+  if(onlineBattleStarted) return;
+  if(peerBattleKey && peerSupportKey && myRevealSent){
+    onlineBattleStarted=true;
+    const battleBack=document.getElementById('foeBattleBack');
+    if(battleBack){
+      battleBack.outerHTML = `<div class="pick-card">${miniCard(peerBattleKey)}<div class="role" style="text-align:center;">Batalha</div></div>`;
+      document.getElementById('foeSupportBack').outerHTML = `<div class="pick-card">${miniCard(peerSupportKey)}<div class="role" style="text-align:center;">Suporte</div></div>`;
+    }
+    setTimeout(()=>{
+      document.getElementById('confrontPhase').style.display='none';
+      startBattle(peerBattleKey, peerSupportKey);
+    }, 900);
+  }
+}
+
+function tryResolveOnline(){
+  if(roundActive && playerChoice!==null && botChoice!==null){
+    roundActive=false;
+    clearTimeout(timerInterval);
+    setTimeout(resolveRound, 500);
+  }
+}
+
+
+function initMatch(){
+  yourHand=drawHand();
+  botHand=drawHand();
+  matchRound=1;
+  peerHandSize=null;
+  document.getElementById('endScreen').style.display='none';
+  document.getElementById('confrontPhase').style.display='none';
+  document.getElementById('rolePhase').style.display='none';
+  document.getElementById('handPhase').style.display='block';
+  buildHandPhase();
+}
+
+let handCardEls=[];
+
+function buildHandPhase(){
+  yourSelectedIdx=[];
+  handCardEls=[];
+  const maxPick=Math.min(3, yourHand.length);
+  document.getElementById('roundLabelTitle').textContent=`Rodada ${matchRound}`;
+  document.getElementById('handSummary').textContent = onlineMode
+    ? `Sua mão: ${yourHand.length} carta(s) · Mão do amigo: ${peerHandSize ?? '?'} carta(s)`
+    : `Sua mão: ${yourHand.length} carta(s) · Mão do inimigo: ${botHand.length} carta(s)`;
+  document.getElementById('toRolesBtn').style.display='none';
+  const row=document.getElementById('handRow');
+  row.innerHTML='';
+  yourHand.forEach((key,idx)=>{
+    const card=document.createElement('div');
+    card.className='pick-card';
+    card.innerHTML=miniCard(key);
+    card.onclick=()=>{
+      const pos=yourSelectedIdx.indexOf(idx);
+      if(pos>-1){ yourSelectedIdx.splice(pos,1); card.classList.remove('selected'); }
+      else if(yourSelectedIdx.length<maxPick){ yourSelectedIdx.push(idx); card.classList.add('selected'); }
+      document.getElementById('handCount').textContent=`(${yourSelectedIdx.length}/${maxPick})`;
+      if(yourSelectedIdx.length===maxPick){
+        document.querySelectorAll('#handRow .pick-card').forEach(c=>c.style.pointerEvents='none');
+        setTimeout(goToRolePhase, 350);
+      }
+    };
+    handCardEls[idx]=card;
+    row.appendChild(card);
+  });
+  document.getElementById('handCount').textContent=`(0/${maxPick})`;
+}
+
+function randomizeHandPick(){
+  const maxPick=Math.min(3, yourHand.length);
+  const remaining=maxPick-yourSelectedIdx.length;
+  if(remaining<=0) return;
+  const available=[...Array(yourHand.length).keys()].filter(i=>!yourSelectedIdx.includes(i));
+  const picks=available.sort(()=>Math.random()-0.5).slice(0,remaining);
+  picks.forEach(idx=>handCardEls[idx].click());
+}
+
+
+function goToRolePhase(){
+  document.getElementById('handPhase').style.display='none';
+  document.getElementById('rolePhase').style.display='block';
+  buildRolePhase();
+}
+
+function goToConfrontPhase(){
+  document.getElementById('rolePhase').style.display='none';
+  document.getElementById('confrontPhase').style.display='block';
+  buildConfrontPhase();
+}
+
+function buildRolePhase(){
+  yourRoles={battle:null,support:null,discard:null};
+  const needsDiscard = yourSelectedIdx.length===3;
+  const row=document.getElementById('roleRow');
+  row.innerHTML='';
+  yourSelectedIdx.forEach(idx=>{
+    const key=yourHand[idx];
+    const card=document.createElement('div');
+    card.className='pick-card';
+    const discardBtn = needsDiscard ? `<div class="role-btn" data-role="discard">Descarte</div>` : '';
+    card.innerHTML=`${miniCard(key)}<div class="role-buttons">
+        <div class="role-btn" data-role="battle">Batalha</div>
+        <div class="role-btn" data-role="support">Suporte</div>
+        ${discardBtn}
+      </div>`;
+    card.querySelectorAll('.role-btn').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        const role=btn.dataset.role;
+        // clear this role from any other card first
+        if(yourRoles[role]!==null && yourRoles[role]!==idx){
+          const prevIdx=yourRoles[role];
+          document.querySelectorAll('#roleRow .pick-card').forEach(c=>{
+            if(c.dataset.idx==prevIdx) c.querySelector(`.role-btn[data-role="${role}"]`).classList.remove('active-'+role);
+          });
+        }
+        // clear idx's previous role (if it had a different one)
+        Object.keys(yourRoles).forEach(r=>{ if(yourRoles[r]===idx && r!==role){ yourRoles[r]=null; const b=card.querySelector(`.role-btn[data-role="${r}"]`); if(b) b.classList.remove('active-'+r); } });
+        yourRoles[role]=idx;
+        card.querySelectorAll('.role-btn').forEach(b=>b.classList.remove('active-battle','active-support','active-discard'));
+        card.querySelector(`.role-btn[data-role="${role}"]`).classList.add('active-'+role);
+        checkRolesComplete();
+      };
+    });
+    card.dataset.idx=idx;
+    row.appendChild(card);
+  });
+  document.getElementById('roleHint').textContent = needsDiscard
+    ? 'Toque numa carta e escolha o papel dela'
+    : 'Sua mão está curta — escolha só Batalha e Suporte (sem descarte nessa rodada)';
+}
+function checkRolesComplete(){
+  const needsDiscard = yourSelectedIdx.length===3;
+  const ok = yourRoles.battle!==null && yourRoles.support!==null && (!needsDiscard || yourRoles.discard!==null);
+  if(ok){
+    document.querySelectorAll('#roleRow .role-btn').forEach(b=>b.style.pointerEvents='none');
+    setTimeout(goToConfrontPhase, 350);
+  }
+}
+
+function randomizeRoles(){
+  const idxs=[...yourSelectedIdx];
+  const shuffled=[...idxs].sort(()=>Math.random()-0.5);
+  const needsDiscard = idxs.length===3;
+  const roles = needsDiscard ? ['battle','support','discard'] : ['battle','support'];
+  shuffled.forEach((idx,i)=>{
+    const btn=document.querySelector(`#roleRow .pick-card[data-idx="${idx}"] .role-btn[data-role="${roles[i]}"]`);
+    if(btn) btn.click();
+  });
+}
+
+function botAssignRoles(){
+  const poolSize=Math.min(3, botHand.length);
+  const pool=[...Array(botHand.length).keys()].sort(()=>Math.random()-0.5).slice(0,poolSize);
+  botRoles={ battle:pool[0], support:pool[1], discard: poolSize===3 ? pool[2] : null };
+}
+
+function buildConfrontPhase(){
+  const yourDiscardKey = yourRoles.discard!==null ? yourHand[yourRoles.discard] : null;
+  const yourBattleKey = yourHand[yourRoles.battle];
+  const yourSupportKey = yourHand[yourRoles.support];
+  youKey = yourBattleKey;
+  supKey = yourSupportKey;
+
+  document.getElementById('yourDiscardBox').innerHTML = yourDiscardKey
+    ? `<div class="pick-card">${miniCard(yourDiscardKey)}</div>`
+    : `<div class="pick-card" style="opacity:.5;text-align:center;padding-top:20px;">— sem descarte —</div>`;
+  document.getElementById('yourHiddenBox').innerHTML = `
+    <div class="pick-card">${miniCard(yourBattleKey)}<div class="role" style="text-align:center;">Batalha</div></div>
+    <div class="pick-card">${miniCard(yourSupportKey)}<div class="role" style="text-align:center;">Suporte</div></div>`;
+
+  if(onlineMode){
+    document.getElementById('revealBtn').style.display='none';
+    document.getElementById('foeDiscardBox').innerHTML = `<div class="pick-card" style="opacity:.5;text-align:center;padding-top:20px;">Aguardando…</div>`;
+    document.getElementById('foeHiddenBox').innerHTML = `
+      <div class="card-back" id="foeBattleBack">?</div>
+      <div class="card-back" id="foeSupportBack">?</div>`;
+    myReadySent=false; peerReady=false; myRevealSent=false;
+    peerBattleKey=null; peerSupportKey=null; onlineBattleStarted=false;
+    roundSnapshot = { yourRoles:{...yourRoles}, botRoles:null };
+    sendMsg({type:'battle-ready', discardKey:yourDiscardKey});
+    myReadySent=true;
+    maybeSendReveal();
+  } else {
+    document.getElementById('revealBtn').style.display='inline-block';
+    document.getElementById('revealBtn').disabled=false;
+    botAssignRoles();
+    const foeDiscardKey = botRoles.discard!==null ? botHand[botRoles.discard] : null;
+    document.getElementById('foeDiscardBox').innerHTML = foeDiscardKey
+      ? `<div class="pick-card">${miniCard(foeDiscardKey)}</div>`
+      : `<div class="pick-card" style="opacity:.5;text-align:center;padding-top:20px;">— sem descarte —</div>`;
+    document.getElementById('foeHiddenBox').innerHTML = `
+      <div class="card-back" id="foeBattleBack">?</div>
+      <div class="card-back" id="foeSupportBack">?</div>`;
+    roundSnapshot = { yourRoles:{...yourRoles}, botRoles:{...botRoles} };
+  }
+}
+
+function doReveal(){
+  const foeBattleKey = botHand[botRoles.battle];
+  const foeSupportKey = botHand[botRoles.support];
+  document.getElementById('foeBattleBack').outerHTML = `<div class="pick-card">${miniCard(foeBattleKey)}<div class="role" style="text-align:center;">Batalha</div></div>`;
+  document.getElementById('foeSupportBack').outerHTML = `<div class="pick-card">${miniCard(foeSupportKey)}<div class="role" style="text-align:center;">Suporte</div></div>`;
+  setTimeout(()=>{
+    document.getElementById('confrontPhase').style.display='none';
+    startBattle(foeBattleKey, foeSupportKey);
+  }, 900);
+}
+
+function pickRandomFoe(){ const keys=Object.keys(CHARACTERS); return { bKey:keys[Math.floor(Math.random()*keys.length)], sKey:keys[Math.floor(Math.random()*keys.length)] }; }
+
+function makeFighter(key, supportKey){
+  const base=CHARACTERS[key];
+  return { key, base, supportKey, supportBase:CHARACTERS[supportKey],
+    hp:base.hp, maxHp:base.hp, poison:null, shieldTurns:0, buffAtk:1, critChance:0, fumacaBonus:false,
+    abilityCooldown:0, dodgeCooldown:0 };
+}
+
+function log(msg, cls){ const p=document.createElement('p'); p.textContent=msg; if(cls) p.className=cls; logEl.appendChild(p); logEl.scrollTop=logEl.scrollHeight; }
+
+function startBattle(foeBattleKey, foeSupportKey){
+  document.getElementById('battle').style.display='block';
+  logEl=document.getElementById('log'); logEl.innerHTML='';
+  battleEnded=false;
+
+  you=makeFighter(youKey, supKey);
+  foe=makeFighter(foeBattleKey, foeSupportKey);
+
+  document.getElementById('youArt').innerHTML = svgFor(you.key)+'<div class="hit-flash"></div>';
+  document.getElementById('foeArt').innerHTML = svgFor(foe.key)+'<div class="hit-flash"></div>';
+  document.getElementById('youName').textContent=you.base.name;
+  document.getElementById('youSupportName').textContent='Habilidade: '+you.supportBase.supportName+' ('+you.supportBase.name+')';
+  document.getElementById('foeName').textContent=foe.base.name;
+  document.getElementById('foeSupportName').textContent='Habilidade: '+foe.supportBase.supportName+' ('+foe.supportBase.name+')';
+  document.getElementById('atkDesc').textContent=you.base.attackName;
+  document.getElementById('supDesc').textContent=you.supportBase.supportName;
+
+  log(`Você invoca ${you.base.name}. O inimigo invoca ${foe.base.name}.`,'sys');
+  render();
+
+  document.getElementById('btnAttack').onclick=()=>chooseAction('atacar');
+  document.getElementById('btnDefend').onclick=()=>chooseAction('defender');
+  document.getElementById('btnDodge').onclick=()=>chooseAction('esquivar');
+  document.getElementById('btnSupport').onclick=()=>chooseAction('habilidade');
+
+  startRound();
+}
+
+function render(){
+  updateBars(you,'you'); updateBars(foe,'foe');
+  updateArtState(you,'youArt'); updateArtState(foe,'foeArt');
+}
+function updateBars(f,prefix){
+  document.getElementById(prefix+'HpBar').style.width=Math.max(0,(f.hp/f.maxHp*100))+'%';
+  document.getElementById(prefix+'HpText').textContent=Math.max(0,Math.round(f.hp))+'/'+f.maxHp;
+  const statusRow=document.getElementById(prefix+'Status');
+  statusRow.innerHTML='';
+  if(f.poison){addPill(statusRow,'Veneno','poison');}
+  if(f.shieldTurns>0){addPill(statusRow,'Escudo','shield');}
+  if(f.buffAtk>1){addPill(statusRow,'Dano+','buff');}
+  if(f.fumacaBonus){addPill(statusRow,'Fumaça','buff');}
+  if(f.critChance>0){addPill(statusRow,'Mira','buff');}
+}
+function addPill(row,text,cls){ const s=document.createElement('span'); s.className='status-pill '+cls; s.textContent=text; row.appendChild(s); }
+function updateArtState(f, elId){
+  const el=document.getElementById(elId);
+  el.classList.toggle('poisoned', !!f.poison);
+  el.classList.toggle('shielded', f.shieldTurns>0);
+}
+function floatText(elId, text, cls){
+  const stage=document.getElementById('stage'); const anchor=document.getElementById(elId);
+  const rect=anchor.getBoundingClientRect(); const stageRect=stage.getBoundingClientRect();
+  const ft=document.createElement('div'); ft.className='floating-text'+(cls?' '+cls:''); ft.textContent=text;
+  ft.style.left=(rect.left-stageRect.left+rect.width/2-10)+'px';
+  ft.style.top=(rect.top-stageRect.top+20)+'px';
+  stage.appendChild(ft); setTimeout(()=>ft.remove(),1000);
+}
+
+function updateButtonStates(){
+  const supBtn=document.getElementById('btnSupport');
+  supBtn.disabled = you.abilityCooldown>0;
+  document.getElementById('supDesc').textContent = you.abilityCooldown>0 ? `Disponível em ${you.abilityCooldown} ação(ões)` : you.supportBase.supportName;
+
+  const dodgeBtn=document.getElementById('btnDodge');
+  dodgeBtn.disabled = you.dodgeCooldown>0;
+  document.getElementById('dodgeDesc').textContent = you.dodgeCooldown>0 ? `Disponível em ${you.dodgeCooldown} ação(ões)` : 'Esquiva garantida (100%)';
+
+  [ 'btnAttack','btnDefend','btnDodge','btnSupport'].forEach(id=>{
+    const b=document.getElementById(id);
+    b.classList.remove('chosen');
+    if(id==='btnDodge'){ b.disabled = you.dodgeCooldown>0; }
+    else if(id==='btnSupport'){ b.disabled = you.abilityCooldown>0; }
+    else { b.disabled=false; }
+  });
+}
+
+function pickBotAction(){
+  const options=[];
+  options.push('atacar','atacar','atacar','defender');
+  if(foe.dodgeCooldown===0) options.push('esquivar','esquivar');
+  if(foe.abilityCooldown===0) options.push('habilidade','habilidade');
+  if(foe.hp < foe.maxHp*0.3){ options.push('defender'); if(foe.dodgeCooldown===0) options.push('esquivar'); }
+  return options[Math.floor(Math.random()*options.length)];
+}
+
+function startRound(){
+  if(you.hp<=0 || foe.hp<=0) return;
+  playerChoice=null;
+  myCritRoll=null; peerCritRoll=null;
+  botChoice = onlineMode ? null : pickBotAction();
+  roundActive=true;
+  document.getElementById('roundLabel').textContent='Escolha sua ação';
+  updateButtonStates();
+
+  const fill=document.getElementById('timerFill');
+  fill.style.transition='none'; fill.style.width='100%';
+  requestAnimationFrame(()=>{
+    fill.style.transition=`width ${ROUND_SECONDS}s linear`;
+    fill.style.width='0%';
+  });
+
+  clearInterval(timerInterval);
+  timerInterval=setTimeout(()=>{
+    if(!roundActive) return;
+    if(!playerChoice){
+      playerChoice='defender';
+      if(onlineMode) sendMsg({type:'action', round:matchRound, action:'defender'});
+    }
+    if(onlineMode){ tryResolveOnline(); } else { resolveRound(); }
+  }, ROUND_SECONDS*1000);
+}
+
+function chooseAction(action){
+  if(!roundActive || playerChoice) return;
+  if(action==='habilidade' && you.abilityCooldown>0) return;
+  if(action==='esquivar' && you.dodgeCooldown>0) return;
+  playerChoice=action;
+  const map={atacar:'btnAttack',defender:'btnDefend',esquivar:'btnDodge',habilidade:'btnSupport'};
+  document.getElementById(map[action]).classList.add('chosen');
+  ['btnAttack','btnDefend','btnDodge','btnSupport'].forEach(id=>{ if(id!==map[action]) document.getElementById(id).disabled=true; });
+  document.getElementById('roundLabel').textContent='Aguardando o oponente…';
+  clearTimeout(timerInterval);
+  if(onlineMode){
+    myCritRoll = (action==='atacar') ? Math.random() : null;
+    sendMsg({type:'action', round:matchRound, action, critRoll:myCritRoll});
+    tryResolveOnline();
+  } else {
+    setTimeout(resolveRound, 500);
+  }
+}
+
+function actionLabel(a){ return {atacar:'Atacar', defender:'Defender', esquivar:'Esquivar', habilidade:'Habilidade'}[a]; }
+
+function resolveRound(){
+  roundActive=false;
+  clearTimeout(timerInterval);
+  log(`Você: ${actionLabel(playerChoice)} · Inimigo: ${actionLabel(botChoice)}`, 'sys');
+
+  // cooldown ticking (before applying new usage)
+  if(you.abilityCooldown>0) you.abilityCooldown--;
+  if(foe.abilityCooldown>0) foe.abilityCooldown--;
+  if(you.dodgeCooldown>0) you.dodgeCooldown--;
+  if(foe.dodgeCooldown>0) foe.dodgeCooldown--;
+
+  // Dodge always costs its cooldown once chosen, even if there was nothing to dodge
+  if(playerChoice==='esquivar'){
+    you.dodgeCooldown = DODGE_COOLDOWN_CHOICES;
+    if(botChoice!=='atacar') log('Você se preparou pra esquivar, mas o inimigo não atacou — esquiva desperdiçada.', 'sys');
+  }
+  if(botChoice==='esquivar'){
+    foe.dodgeCooldown = DODGE_COOLDOWN_CHOICES;
+    if(playerChoice!=='atacar') log('O inimigo se preparou pra esquivar, mas você não atacou — esquiva dele foi desperdiçada.', 'sys');
+  }
+
+  // Resolve you -> foe (if you attack)
+  if(playerChoice==='atacar') resolveAttack(you, foe, botChoice, true, onlineMode?myCritRoll:null);
+  if(botChoice==='atacar') resolveAttack(foe, you, playerChoice, false, onlineMode?peerCritRoll:null);
+
+  // Resolve abilities (fail if the other side attacked)
+  if(playerChoice==='habilidade'){
+    if(botChoice!=='atacar'){ activateAbility(you, true); }
+    else { log('Sua habilidade falhou — o inimigo atacou antes que você concluísse!','sys'); }
+    you.abilityCooldown = ABILITY_COOLDOWN_CHOICES;
+  }
+  if(botChoice==='habilidade'){
+    if(playerChoice!=='atacar'){ activateAbility(foe, false); }
+    else { log('A habilidade do inimigo falhou — você atacou antes!','sys'); }
+    foe.abilityCooldown = ABILITY_COOLDOWN_CHOICES;
+  }
+
+  // Poison: deals damage every 2 actions, repeating until it runs out of applications
+  [ {f:you, id:'youArt', label:'Você'}, {f:foe, id:'foeArt', label:'Inimigo'} ].forEach(({f,id,label})=>{
+    if(f.poison){
+      f.poison.timer--;
+      if(f.poison.timer<=0){
+        f.hp -= f.poison.dmg;
+        floatText(id, '-'+f.poison.dmg, '');
+        log(`${label} sofre ${f.poison.dmg} de dano do veneno.`,'sys');
+        f.poison.remaining--;
+        if(f.poison.remaining<=0){ f.poison=null; }
+        else { f.poison.timer=2; }
+      }
+    }
+  });
+
+  render();
+  setTimeout(()=>{
+    if(battleEnded) return;
+    if(you.hp<=0 || foe.hp<=0){ tryEndBattle(foe.hp<=0 && you.hp>0); }
+    else { startRound(); }
+  }, 900);
+}
+
+function tryEndBattle(youWon){
+  if(battleEnded) return;
+  battleEnded=true;
+  endBattle(youWon);
+}
+
+function resolveAttack(attacker, defender, defenderAction, isYou, forcedCritRoll){
+  const attackerElId = isYou?'youArt':'foeArt';
+  const defenderElId = isYou?'foeArt':'youArt';
+  const attackerEl=document.getElementById(attackerElId);
+  const lungeClass = isYou ? 'lunge-you':'lunge-foe';
+  attackerEl.classList.add(lungeClass);
+  setTimeout(()=>attackerEl.classList.remove(lungeClass), 350);
+
+  log(`${isYou?'Você':'Inimigo'}: ${attacker.base.name} usa ${attacker.base.attackName}.`, isYou?'you':'foe');
+
+  // Dodge check — Fumaça grants a free automatic dodge (doesn't need the Esquivar action);
+  // choosing Esquivar itself is now guaranteed (100%) against an attack
+  if(defender.fumacaBonus){
+    defender.fumacaBonus=false;
+    log(`${defender.base.name} esquiva automaticamente graças à Fumaça!`, 'sys');
+    floatText(defenderElId,'Esquivou!','info');
+    const defEl=document.getElementById(defenderElId);
+    defEl.classList.add('dodging'); setTimeout(()=>defEl.classList.remove('dodging'),400);
+    return;
+  }
+  if(defenderAction==='esquivar'){
+    log(`${defender.base.name} esquiva do golpe!`, 'sys');
+    floatText(defenderElId,'Esquivou!','info');
+    const defEl=document.getElementById(defenderElId);
+    defEl.classList.add('dodging'); setTimeout(()=>defEl.classList.remove('dodging'),400);
+    return;
+  }
+
+  let dmg = attacker.base.dmg * (attacker.buffAtk||1);
+  attacker.buffAtk=1;
+  let wasCrit=false;
+  const critRoll = (forcedCritRoll!=null) ? forcedCritRoll : Math.random();
+  if(attacker.critChance>0 && critRoll<attacker.critChance){
+    dmg*=1.8; attacker.critChance=0; wasCrit=true;
+    log(`Golpe CRÍTICO!`, 'sys');
+  }
+
+  if(defenderAction==='defender' || defender.shieldTurns>0){
+    dmg = dmg/2;
+    if(defender.shieldTurns>0){ defender.shieldTurns=0; log(`${defender.base.name} bloqueia parte do dano com o Escudo.`,'sys'); }
+    else { log(`${defender.base.name} se defende, reduzindo o dano.`,'sys'); }
+    const defEl=document.getElementById(defenderElId);
+    defEl.classList.add('blocking'); setTimeout(()=>defEl.classList.remove('blocking'),400);
+  }
+
+  defender.hp -= dmg;
+
+  setTimeout(()=>{
+    const defEl=document.getElementById(defenderElId);
+    defEl.classList.add('hit','shake');
+    floatText(defenderElId, (wasCrit?'CRÍT -':'-')+Math.round(dmg), '');
+    setTimeout(()=>defEl.classList.remove('hit','shake'), 420);
+  }, 280);
+
+  if(attacker.base.poisonOnHit && !defender.poison){
+    defender.poison={dmg:3, timer:2, remaining:2};
+    log(`${defender.base.name} foi envenenado! Vai sofrer dano a cada 2 ações.`,'sys');
+  }
+}
+
+function activateAbility(f, isYou){
+  f.supportBase.supportEffect(f);
+  const elId = isYou?'youArt':'foeArt';
+  log(`${isYou?'Você':'Inimigo'} ativa ${f.supportBase.supportName} (${f.supportBase.name}).`, 'sys');
+  if(f._healed){
+    const el=document.getElementById(elId);
+    el.classList.add('healing'); floatText(elId,'+cura','heal');
+    setTimeout(()=>el.classList.remove('healing'),1000);
+    f._healed=false;
+  } else {
+    floatText(elId, f.supportBase.supportName+'!', 'info');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.getElementById('modeBotBtn').onclick=()=>{
+    document.getElementById('modeSelect').style.display='none';
+    onlineMode=false;
+    initMatch();
+  };
+  document.getElementById('modeOnlineBtn').onclick=()=>{
+    document.getElementById('modeSelect').style.display='none';
+    document.getElementById('onlineSetup').style.display='block';
+  };
+  document.getElementById('joinRoomBtn').onclick=joinRoom;
+
+  document.getElementById('randomHandBtn').onclick=randomizeHandPick;
+  document.getElementById('randomRolesBtn').onclick=randomizeRoles;
+  document.getElementById('revealBtn').onclick=()=>{
+    document.getElementById('revealBtn').disabled=true;
+    doReveal();
+  };
+});
+
+function removeIndices(arr, idxs){
+  const uniqueSorted=[...new Set(idxs)].sort((a,b)=>b-a);
+  uniqueSorted.forEach(i=>arr.splice(i,1));
+}
+
+function endBattle(youWon){
+  document.getElementById('battle').style.display='none';
+
+  const yr=roundSnapshot.yourRoles, br=roundSnapshot.botRoles;
+  const toRemoveYour=[];
+  if(yr.discard!==null) toRemoveYour.push(yr.discard);
+  if(!youWon) toRemoveYour.push(yr.battle);
+  removeIndices(yourHand, toRemoveYour);
+
+  if(onlineMode){
+    sendMsg({type:'handsize', n:yourHand.length});
+  } else {
+    const toRemoveBot=[];
+    if(br.discard!==null) toRemoveBot.push(br.discard);
+    if(youWon) toRemoveBot.push(br.battle);
+    removeIndices(botHand, toRemoveBot);
+  }
+
+  document.getElementById('endScreen').style.display='block';
+  document.getElementById('endTitle').textContent = youWon ? 'Vitória!' : 'Derrota';
+  document.getElementById('endTitle').style.color = youWon ? 'var(--gold)' : 'var(--blood-bright)';
+
+  const opponentHandLen = onlineMode ? peerHandSize : botHand.length;
+  const opponentLabel = onlineMode ? 'seu amigo' : 'o inimigo';
+  const matchOver = yourHand.length<=1 || (opponentHandLen!==null && opponentHandLen<=1);
+  const restartBtn=document.getElementById('restartBtn');
+
+  if(matchOver){
+    const overallWinner = (opponentHandLen===null) ? 'Você' : (yourHand.length>opponentHandLen ? 'Você' : (opponentHandLen>yourHand.length ? `Seu amigo` : 'Ninguém — empate'));
+    document.getElementById('endText').textContent =
+      `${youWon?`${you.base.name} venceu ${foe.base.name}.`:`${foe.base.name} derrotou ${you.base.name}.`} `+
+      `Fim de partida após ${matchRound} rodada(s)! ${overallWinner} venceu — restaram ${yourHand.length} carta(s) pra você e ${opponentHandLen ?? '?'} pra ${opponentLabel}.`;
+    restartBtn.textContent='Jogar nova partida';
+    restartBtn.onclick=initMatch;
+  } else {
+    matchRound++;
+    document.getElementById('endText').textContent = (youWon
+      ? `${you.base.name} venceu ${foe.base.name}. ${onlineMode?'Seu amigo perde':'O inimigo perde'} a carta de batalha`+((onlineMode?true:br.discard!==null)?' e a de descarte':'')+', ficando só com o suporte.'
+      : `${foe.base.name} derrotou ${you.base.name}. Você perde a carta de batalha`+(yr.discard!==null?' e a de descarte':'')+', ficando apenas com a carta de suporte.'
+    ) + ` Sua mão agora: ${yourHand.length} carta(s) · Mão de ${opponentLabel}: ${opponentHandLen ?? '?'} carta(s).`;
+    restartBtn.textContent='Próxima rodada';
+    restartBtn.onclick=()=>{
+      document.getElementById('endScreen').style.display='none';
+      document.getElementById('handPhase').style.display='block';
+      buildHandPhase();
+    };
+  }
+}
+</script>
+</body>
+</html>
