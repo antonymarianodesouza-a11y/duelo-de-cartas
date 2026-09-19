@@ -69,6 +69,7 @@ h1{ font-family:'Cinzel', serif; font-weight:900; text-align:center; font-size:c
 .combatant.dodging{ opacity:.3; }
 .combatant.blocking{ filter:brightness(1.3) drop-shadow(0 0 10px rgba(77,142,201,.6)); }
 @keyframes pulse{ 0%,100%{opacity:.5;} 50%{opacity:1;} }
+@keyframes spin{ to{ transform:rotate(360deg); } }
 .floating-text{ position:absolute; font-family:'Cinzel',serif; font-weight:700; font-size:18px; color:var(--blood-bright); text-shadow:0 2px 4px rgba(0,0,0,.8); animation:floatUp 1s ease-out forwards; pointer-events:none; white-space:nowrap; }
 .floating-text.heal{color:#7fd67f;}
 .floating-text.info{color:var(--gold); font-size:13.5px; font-style:italic;}
@@ -132,12 +133,20 @@ h1{ font-family:'Cinzel', serif; font-weight:900; text-align:center; font-size:c
   </div>
 
   <div id="onlineSetup" style="display:none;">
-    <p class="subtitle" style="margin-bottom:8px;">Endereço do servidor (os dois usam o mesmo)</p>
-    <input id="serverUrlInput" type="text" placeholder="wss://seu-servidor.glitch.me" style="width:100%;font-size:13px;background:var(--stone-950);color:var(--parchment);border:1px solid var(--stone-700);padding:10px;margin-bottom:12px;">
-    <p class="subtitle" style="margin-bottom:8px;">Código da sala (combine com seu amigo — qualquer palavra, os dois digitam a mesma)</p>
-    <input id="roomCodeInput" type="text" placeholder="ex: espada123" style="width:100%;font-size:13px;background:var(--stone-950);color:var(--parchment);border:1px solid var(--stone-700);padding:10px;margin-bottom:14px;">
-    <button class="btn" id="joinRoomBtn">Entrar na sala</button>
-    <p id="roomStatus" class="subtitle" style="margin-top:10px;"></p>
+    <div id="joinForm">
+      <p class="subtitle" style="margin-bottom:8px;">Código da sala (combine com seu amigo — qualquer palavra, os dois digitam a mesma)</p>
+      <input id="roomCodeInput" type="text" placeholder="ex: espada123" style="width:100%;font-size:13px;background:var(--stone-950);color:var(--parchment);border:1px solid var(--stone-700);padding:10px;margin-bottom:14px;">
+      <button class="btn" id="joinRoomBtn">Entrar na sala</button>
+      <p id="roomStatus" class="subtitle" style="margin-top:10px;"></p>
+    </div>
+
+    <div id="waitingRoom" style="display:none;text-align:center;padding:30px 10px;">
+      <div id="waitingSpinner" style="width:44px;height:44px;margin:0 auto 20px;border:3px solid var(--stone-700);border-top-color:var(--gold);border-radius:50%;animation:spin 1s linear infinite;"></div>
+      <p class="subtitle" style="font-size:16px;color:var(--gold);margin-bottom:6px;">Sala criada!</p>
+      <p class="subtitle" style="margin-bottom:16px;">Código: <b id="waitingRoomCode" style="color:var(--parchment);font-family:'Cinzel',serif;"></b></p>
+      <p id="waitingStatus" class="subtitle" style="margin-bottom:22px;">Aguardando seu amigo entrar na sala…</p>
+      <button class="btn secondary" id="cancelWaitBtn">Cancelar</button>
+    </div>
   </div>
 
   <div id="handPhase" style="display:none;">
@@ -309,31 +318,78 @@ function miniCard(key, extraClass){
 }
 
 // --- Online connection via a small relay server (room code based) ---
+// IMPORTANT: troque esta URL pelo endereço wss:// do seu servidor no Render assim que ele estiver publicado.
+const SERVER_URL = 'wss://duelo-de-cartas-53rl.onrender.com';
+
 function sendMsg(obj){ if(dc && dc.readyState===WebSocket.OPEN) dc.send(JSON.stringify(obj)); }
 
+function showJoinForm(){
+  document.getElementById('waitingRoom').style.display='none';
+  document.getElementById('joinForm').style.display='block';
+}
+
 function joinRoom(){
-  const serverUrl=document.getElementById('serverUrlInput').value.trim();
+  const serverUrl=SERVER_URL;
   const roomCode=document.getElementById('roomCodeInput').value.trim();
   const statusEl=document.getElementById('roomStatus');
-  if(!serverUrl || !roomCode){ statusEl.textContent='Preenche o endereço do servidor e o código da sala.'; return; }
+  if(!roomCode){ statusEl.textContent='Preenche o código da sala.'; return; }
+  if(!serverUrl || serverUrl.indexOf('SEU-SERVIDOR')!==-1){ statusEl.textContent='O jogo ainda não tem um servidor configurado (fale com quem te passou o jogo).'; return; }
 
-  statusEl.textContent='Conectando ao servidor…';
+  // Switch to the waiting-room screen right away so it's obvious something happened
+  document.getElementById('joinForm').style.display='none';
+  document.getElementById('waitingRoom').style.display='block';
+  document.getElementById('waitingRoomCode').textContent=roomCode;
+  document.getElementById('waitingStatus').textContent='Conectando ao servidor…';
+  document.getElementById('waitingSpinner').style.display='block';
+
   let ws;
   try{ ws=new WebSocket(serverUrl); }
-  catch(err){ statusEl.textContent='Endereço de servidor inválido.'; return; }
+  catch(err){
+    document.getElementById('waitingStatus').textContent='Endereço de servidor inválido.';
+    document.getElementById('waitingSpinner').style.display='none';
+    return;
+  }
+
+  // O plano grátis do servidor "dorme" quando ninguém usa — a primeira conexão pode demorar até 1 minuto pra acordar.
+  const wakeupHintTimer=setTimeout(()=>{
+    if(ws.readyState===WebSocket.CONNECTING){
+      document.getElementById('waitingStatus').textContent='Ainda conectando… o servidor pode estar "acordando", isso pode levar até 1 minuto.';
+    }
+  }, 8000);
+  const connectTimeoutTimer=setTimeout(()=>{
+    if(ws.readyState===WebSocket.CONNECTING){
+      document.getElementById('waitingStatus').textContent='Não consegui conectar ao servidor a tempo. Tente de novo em instantes.';
+      document.getElementById('waitingSpinner').style.display='none';
+      try{ ws.close(); }catch(e){}
+    }
+  }, 45000);
 
   ws.onopen=()=>{
-    statusEl.textContent='Entrando na sala…';
+    clearTimeout(wakeupHintTimer); clearTimeout(connectTimeoutTimer);
+    document.getElementById('waitingStatus').textContent='Entrando na sala…';
     ws.send(JSON.stringify({type:'join', room:roomCode}));
   };
-  ws.onerror=()=>{ statusEl.textContent='Não consegui conectar nesse servidor. Confira o endereço.'; };
-  ws.onclose=()=>{ if(!onlineMode) statusEl.textContent='Conexão encerrada antes de começar.'; };
+  ws.onerror=()=>{
+    clearTimeout(wakeupHintTimer); clearTimeout(connectTimeoutTimer);
+    document.getElementById('waitingStatus').textContent='Não consegui conectar nesse servidor. Confira se ele está no ar.';
+    document.getElementById('waitingSpinner').style.display='none';
+  };
+  ws.onclose=()=>{
+    clearTimeout(wakeupHintTimer); clearTimeout(connectTimeoutTimer);
+    if(!onlineMode){
+      document.getElementById('waitingStatus').textContent='Conexão encerrada antes de começar.';
+      document.getElementById('waitingSpinner').style.display='none';
+    }
+  };
   ws.onmessage=(e)=>{
     const msg=JSON.parse(e.data);
     if(msg.type==='joined'){
-      statusEl.textContent = msg.players===2 ? 'Sala completa! Iniciando…' : 'Aguardando seu amigo entrar na sala…';
+      document.getElementById('waitingStatus').textContent = msg.players===2
+        ? 'Sala completa! Iniciando a partida…'
+        : 'Sala criada — aguardando seu amigo entrar com o mesmo código…';
     } else if(msg.type==='room-full'){
-      statusEl.textContent='Essa sala já tem dois jogadores. Combine outro código com seu amigo.';
+      document.getElementById('waitingStatus').textContent='Essa sala já tem dois jogadores. Combine outro código com seu amigo.';
+      document.getElementById('waitingSpinner').style.display='none';
     } else if(msg.type==='ready'){
       dc=ws;
       onlineMode=true;
@@ -886,8 +942,13 @@ document.addEventListener('DOMContentLoaded', ()=>{
   document.getElementById('modeOnlineBtn').onclick=()=>{
     document.getElementById('modeSelect').style.display='none';
     document.getElementById('onlineSetup').style.display='block';
+    showJoinForm();
   };
   document.getElementById('joinRoomBtn').onclick=joinRoom;
+  document.getElementById('cancelWaitBtn').onclick=()=>{
+    if(dc){ try{ dc.close(); }catch(e){} dc=null; }
+    showJoinForm();
+  };
 
   document.getElementById('randomHandBtn').onclick=randomizeHandPick;
   document.getElementById('randomRolesBtn').onclick=randomizeRoles;
@@ -952,4 +1013,4 @@ function endBattle(youWon){
 }
 </script>
 </body>
-</html>
+                                                 </html>
