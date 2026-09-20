@@ -293,14 +293,15 @@ const HAND_SIZE = 10;
 let yourHand=[], yourSelectedIdx=[], yourRoles={battle:null,support:null,discard:null};
 let botHand=[], botRoles={battle:null,support:null,discard:null};
 let matchRound=1;
-let roundSnapshot=null; // {yourRoles, botRoles} captured right before a battle starts
-let battleEnded=false; // guards against endBattle firing twice for the same battle
+let roundSnapshot=null;
+let battleEnded=false;
 
 // --- Online (WebRTC) mode state ---
 let onlineMode=false;
 let pc=null, dc=null;
 let peerHandSize=null;
-let myReadySent=false, peerReady=false, myRevealSent=false;
+let myReadySent=false, myRevealSent=false;
+let peerReadyForRound=null, peerRevealForRound=null;
 let peerDiscardKey=undefined, peerBattleKey=null, peerSupportKey=null;
 let onlineBattleStarted=false;
 let myCritRoll=null, peerCritRoll=null;
@@ -318,7 +319,6 @@ function miniCard(key, extraClass){
 }
 
 // --- Online connection via a small relay server (room code based) ---
-// IMPORTANT: troque esta URL pelo endereço wss:// do seu servidor no Render assim que ele estiver publicado.
 const SERVER_URL = 'wss://duelo-de-cartas-53rl.onrender.com';
 
 function sendMsg(obj){ if(dc && dc.readyState===WebSocket.OPEN) dc.send(JSON.stringify(obj)); }
@@ -335,7 +335,6 @@ function joinRoom(){
   if(!roomCode){ statusEl.textContent='Preenche o código da sala.'; return; }
   if(!serverUrl || serverUrl.indexOf('SEU-SERVIDOR')!==-1){ statusEl.textContent='O jogo ainda não tem um servidor configurado (fale com quem te passou o jogo).'; return; }
 
-  // Switch to the waiting-room screen right away so it's obvious something happened
   document.getElementById('joinForm').style.display='none';
   document.getElementById('waitingRoom').style.display='block';
   document.getElementById('waitingRoomCode').textContent=roomCode;
@@ -350,7 +349,6 @@ function joinRoom(){
     return;
   }
 
-  // O plano grátis do servidor "dorme" quando ninguém usa — a primeira conexão pode demorar até 1 minuto pra acordar.
   const wakeupHintTimer=setTimeout(()=>{
     if(ws.readyState===WebSocket.CONNECTING){
       document.getElementById('waitingStatus').textContent='Ainda conectando… o servidor pode estar "acordando", isso pode levar até 1 minuto.';
@@ -404,16 +402,19 @@ function joinRoom(){
 function handlePeerMessage(msg){
   if(msg.type==='battle-ready'){
     peerDiscardKey = msg.discardKey;
-    peerReady=true;
-    const box=document.getElementById('foeDiscardBox');
-    if(box){
-      box.innerHTML = peerDiscardKey
-        ? `<div class="pick-card">${miniCard(peerDiscardKey)}</div>`
-        : `<div class="pick-card" style="opacity:.5;text-align:center;padding-top:20px;">— sem descarte —</div>`;
+    peerReadyForRound = msg.round;
+    if(peerReadyForRound===matchRound){
+      const box=document.getElementById('foeDiscardBox');
+      if(box){
+        box.innerHTML = peerDiscardKey
+          ? `<div class="pick-card">${miniCard(peerDiscardKey)}</div>`
+          : `<div class="pick-card" style="opacity:.5;text-align:center;padding-top:20px;">— sem descarte —</div>`;
+      }
     }
     maybeSendReveal();
   } else if(msg.type==='reveal'){
     peerBattleKey=msg.battleKey; peerSupportKey=msg.supportKey;
+    peerRevealForRound=msg.round;
     checkStartOnlineBattle();
   } else if(msg.type==='action'){
     if(msg.round===matchRound){
@@ -431,16 +432,16 @@ function handlePeerMessage(msg){
 }
 
 function maybeSendReveal(){
-  if(onlineMode && myReadySent && peerReady && !myRevealSent){
+  if(onlineMode && myReadySent && peerReadyForRound===matchRound && !myRevealSent){
     myRevealSent=true;
-    sendMsg({type:'reveal', battleKey:youKey, supportKey:supKey});
+    sendMsg({type:'reveal', battleKey:youKey, supportKey:supKey, round:matchRound});
     checkStartOnlineBattle();
   }
 }
 
 function checkStartOnlineBattle(){
   if(onlineBattleStarted) return;
-  if(peerBattleKey && peerSupportKey && myRevealSent){
+  if(peerBattleKey && peerSupportKey && myRevealSent && peerRevealForRound===matchRound){
     onlineBattleStarted=true;
     const battleBack=document.getElementById('foeBattleBack');
     if(battleBack){
@@ -468,6 +469,9 @@ function initMatch(){
   botHand=drawHand();
   matchRound=1;
   peerHandSize=null;
+  peerReadyForRound=null; peerRevealForRound=null;
+  peerDiscardKey=undefined; peerBattleKey=null; peerSupportKey=null;
+  myReadySent=false; myRevealSent=false; onlineBattleStarted=false;
   document.getElementById('endScreen').style.display='none';
   document.getElementById('confrontPhase').style.display='none';
   document.getElementById('rolePhase').style.display='none';
@@ -506,7 +510,7 @@ function buildHandPhase(){
     row.appendChild(card);
   });
   document.getElementById('handCount').textContent=`(0/${maxPick})`;
-}
+  }
 
 function randomizeHandPick(){
   const maxPick=Math.min(3, yourHand.length);
@@ -613,16 +617,22 @@ function buildConfrontPhase(){
 
   if(onlineMode){
     document.getElementById('revealBtn').style.display='none';
-    document.getElementById('foeDiscardBox').innerHTML = `<div class="pick-card" style="opacity:.5;text-align:center;padding-top:20px;">Aguardando…</div>`;
+    // If the friend's "battle-ready" for this exact round already arrived (they were faster picking cards),
+    // show their real discard now instead of overwriting that info with "waiting".
+    document.getElementById('foeDiscardBox').innerHTML = (peerReadyForRound===matchRound)
+      ? (peerDiscardKey ? `<div class="pick-card">${miniCard(peerDiscardKey)}</div>` : `<div class="pick-card" style="opacity:.5;text-align:center;padding-top:20px;">— sem descarte —</div>`)
+      : `<div class="pick-card" style="opacity:.5;text-align:center;padding-top:20px;">Aguardando…</div>`;
     document.getElementById('foeHiddenBox').innerHTML = `
       <div class="card-back" id="foeBattleBack">?</div>
       <div class="card-back" id="foeSupportBack">?</div>`;
-    myReadySent=false; peerReady=false; myRevealSent=false;
+    myReadySent=false; myRevealSent=false;
     peerBattleKey=null; peerSupportKey=null; onlineBattleStarted=false;
     roundSnapshot = { yourRoles:{...yourRoles}, botRoles:null };
-    sendMsg({type:'battle-ready', discardKey:yourDiscardKey});
+    sendMsg({type:'battle-ready', discardKey:yourDiscardKey, round:matchRound});
     myReadySent=true;
     maybeSendReveal();
+    // Also cover the case where the friend's "reveal" for this round already arrived early.
+    if(peerRevealForRound===matchRound) checkStartOnlineBattle();
   } else {
     document.getElementById('revealBtn').style.display='inline-block';
     document.getElementById('revealBtn').disabled=false;
@@ -798,13 +808,11 @@ function resolveRound(){
   clearTimeout(timerInterval);
   log(`Você: ${actionLabel(playerChoice)} · Inimigo: ${actionLabel(botChoice)}`, 'sys');
 
-  // cooldown ticking (before applying new usage)
   if(you.abilityCooldown>0) you.abilityCooldown--;
   if(foe.abilityCooldown>0) foe.abilityCooldown--;
   if(you.dodgeCooldown>0) you.dodgeCooldown--;
   if(foe.dodgeCooldown>0) foe.dodgeCooldown--;
 
-  // Dodge always costs its cooldown once chosen, even if there was nothing to dodge
   if(playerChoice==='esquivar'){
     you.dodgeCooldown = DODGE_COOLDOWN_CHOICES;
     if(botChoice!=='atacar') log('Você se preparou pra esquivar, mas o inimigo não atacou — esquiva desperdiçada.', 'sys');
@@ -814,11 +822,9 @@ function resolveRound(){
     if(playerChoice!=='atacar') log('O inimigo se preparou pra esquivar, mas você não atacou — esquiva dele foi desperdiçada.', 'sys');
   }
 
-  // Resolve you -> foe (if you attack)
   if(playerChoice==='atacar') resolveAttack(you, foe, botChoice, true, onlineMode?myCritRoll:null);
   if(botChoice==='atacar') resolveAttack(foe, you, playerChoice, false, onlineMode?peerCritRoll:null);
 
-  // Resolve abilities (fail if the other side attacked)
   if(playerChoice==='habilidade'){
     if(botChoice!=='atacar'){ activateAbility(you, true); }
     else { log('Sua habilidade falhou — o inimigo atacou antes que você concluísse!','sys'); }
@@ -830,7 +836,6 @@ function resolveRound(){
     foe.abilityCooldown = ABILITY_COOLDOWN_CHOICES;
   }
 
-  // Poison: deals damage every 2 actions, repeating until it runs out of applications
   [ {f:you, id:'youArt', label:'Você'}, {f:foe, id:'foeArt', label:'Inimigo'} ].forEach(({f,id,label})=>{
     if(f.poison){
       f.poison.timer--;
@@ -869,8 +874,6 @@ function resolveAttack(attacker, defender, defenderAction, isYou, forcedCritRoll
 
   log(`${isYou?'Você':'Inimigo'}: ${attacker.base.name} usa ${attacker.base.attackName}.`, isYou?'you':'foe');
 
-  // Dodge check — Fumaça grants a free automatic dodge (doesn't need the Esquivar action);
-  // choosing Esquivar itself is now guaranteed (100%) against an attack
   if(defender.fumacaBonus){
     defender.fumacaBonus=false;
     log(`${defender.base.name} esquiva automaticamente graças à Fumaça!`, 'sys');
@@ -1013,4 +1016,4 @@ function endBattle(youWon){
 }
 </script>
 </body>
-                                                 </html>
+</html>
