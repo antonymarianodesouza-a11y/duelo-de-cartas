@@ -20,6 +20,9 @@ function send(ws, obj) {
 }
 
 wss.on('connection', (ws) => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
   ws.on('message', (data) => {
     let msg;
     try { msg = JSON.parse(data); } catch (e) { return; }
@@ -67,3 +70,14 @@ wss.on('connection', (ws) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log('Servidor rodando na porta ' + PORT));
+
+// A cada 30s, verifica quem ainda está vivo de verdade. Uma aba de navegador
+// que foi minimizada, ficou em segundo plano ou perdeu conexão sem avisar
+// direito acaba "presa" ocupando vaga na sala — isso libera essa vaga sozinho.
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) { return ws.terminate(); } // dispara 'close', libera a sala
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
